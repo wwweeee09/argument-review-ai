@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>吵架复盘AI助手 | 让对话更有温度</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            height: 100vh; overflow: hidden; color: #4a3b2c;
+        }
+        #babylon-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            outline: none;
+        }
+        /* 爱心图片画廊 - 30张图片随机分布 */
+        .gallery-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .floating-image {
+            position: absolute;
+            width: 90px;
+            height: 90px;
+            border-radius: 20px;
+            object-fit: cover;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            border: 3px solid rgba(255,255,255,0.7);
+            transition: all 0.5s ease;
+            animation: floatAround 12s infinite ease-in-out;
+            pointer-events: none;
+            opacity: 0.75;
+        }
+        .floating-image:hover {
+            opacity: 1;
+            transform: scale(1.08);
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        @keyframes floatAround {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-18px) rotate(3deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+        .app {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 420px;
+            background: rgba(255, 248, 240, 0.92);
+            backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(232, 200, 176, 0.6);
+            display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+        }
+        .sidebar-header { padding: 20px; background: #e8a87c; display: flex; align-items: baseline; justify-content: space-between; }
+        .sidebar-header h2 { font-size: 1.2rem; color: white; font-weight: 600; }
+        .sidebar-header p { font-size: 11px; color: #fff0e0; }
+        .new-chat-btn {
+            margin: 16px; padding: 12px 16px; background: rgba(255, 245, 237, 0.9);
+            border: 1px solid #e8c8b0; cursor: pointer; font-size: 14px; font-weight: 500;
+            display: flex; align-items: center; gap: 10px; transition: all 0.3s ease; color: #e8a87c;
+        }
+        .new-chat-btn:hover { background: #ffede0; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(232, 168, 124, 0.2); }
+        .upload-card {
+            margin: 0 16px 16px 16px; padding: 28px; background: rgba(255, 251, 247, 0.9);
+            border: 1px solid #e8c8b0; text-align: center; cursor: pointer; transition: all 0.3s ease;
+        }
+        .upload-card:hover { background: #fff5ed; border-color: #e8a87c; transform: translateY(-2px); }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes gentleBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        .spinner-icon { animation: spin 1s linear infinite; }
+        .float-icon { animation: gentleBounce 2s ease-in-out infinite; }
+        .speaker-result {
+            margin: 0 16px 16px 16px; background: rgba(255, 251, 247, 0.9);
+            border: 1px solid #e8c8b0; padding: 14px; max-height: 280px; overflow-y: auto;
+        }
+        .speaker-header {
+            font-size: 12px; font-weight: 600; color: #e8a87c; margin-bottom: 12px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #f0d5c0; padding-bottom: 8px;
+        }
+        .speaker-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+        .speaker-stat {
+            font-size: 11px; padding: 4px 10px; background: #fff0e6;
+            border: 1px solid #e8c8b0; display: flex; align-items: center; gap: 6px;
+        }
+        .speaker-color { width: 10px; height: 10px; }
+        .dialogue-item {
+            padding: 10px; margin: 8px 0; border-left: 3px solid; display: flex; gap: 10px;
+            font-size: 12px; background: white; border: 1px solid #e8c8b0; border-left-width: 3px; transition: all 0.2s;
+        }
+        .dialogue-item:hover { background: #fffef8; transform: translateX(2px); }
+        .speaker-tag { font-weight: 600; font-size: 11px; padding: 2px 8px; background: #fff0e6; white-space: nowrap; }
+        .dialogue-text { flex: 1; line-height: 1.4; cursor: pointer; }
+        .dialogue-text-input { flex: 1; border: 1px solid #e8a87c; padding: 4px 8px; font-size: 12px; font-family: inherit; background: white; }
+        .edit-icon { color: #e8a87c; cursor: pointer; padding: 4px; transition: all 0.2s; }
+        .edit-icon:hover { transform: scale(1.1); }
+        .transcript-area { flex: 1; padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
+        .transcript-area textarea {
+            width: 100%; flex: 1; padding: 14px; border: 1px solid #e8c8b0;
+            font-size: 13px; line-height: 1.6; resize: none; font-family: inherit; background: rgba(255, 254, 252, 0.95);
+        }
+        .transcript-area textarea:focus { outline: none; border-color: #e8a87c; box-shadow: 0 0 0 2px rgba(232, 168, 124, 0.1); }
+        .action-buttons { display: flex; gap: 10px; margin-top: 12px; }
+        .btn {
+            padding: 10px 20px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.3s ease;
+            border: 1px solid #e8c8b0; background: rgba(255, 245, 237, 0.9); color: #e8a87c;
+        }
+        .btn-primary { background: #e8a87c; border-color: #e8a87c; color: white; }
+        .btn-primary:hover { background: #d4956a; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(232, 168, 124, 0.3); }
+        .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .main-header {
+            flex-shrink: 0; padding: 16px 24px; background: rgba(255, 248, 240, 0.95);
+            border-bottom: 1px solid rgba(232, 200, 176, 0.6);
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+            backdrop-filter: blur(10px); z-index: 20;
+        }
+        .mode-selector { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .mode-option { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: #b08a6a; }
+        .mode-option input { accent-color: #e8a87c; width: 16px; height: 16px; cursor: pointer; }
+        .analyze-options { display: flex; gap: 20px; align-items: center; }
+        .analyze-option { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: #b08a6a; }
+        .analyze-option input { accent-color: #e8a87c; }
+        .reasoning-effort-container { display: none; align-items: center; gap: 8px; }
+        .reasoning-effort-container select {
+            padding: 6px 12px; border: 1px solid #e8c8b0; background: white; font-size: 13px; color: #e8a87c;
+        }
+        .clear-memory-btn {
+            padding: 8px 16px; background: rgba(255, 245, 237, 0.9);
+            border: 1px solid #e8c8b0; font-size: 12px; cursor: pointer; color: #e8a87c; transition: all 0.3s ease;
+        }
+        .clear-memory-btn:hover { background: #ffede0; transform: translateY(-1px); }
+        .messages-container { flex: 1; overflow-y: auto; padding: 20px 24px; animation: fadeInUp 0.5s ease; }
+        .message { margin-bottom: 24px; display: flex; flex-direction: column; animation: slideIn 0.4s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
+        .message.user { align-items: flex-end; }
+        .message.ai { align-items: flex-start; }
+        .message-avatar { font-size: 11px; color: #e8a87c; margin-bottom: 6px; padding-left: 4px; }
+        .message-content {
+            max-width: 85%; padding: 14px 20px; line-height: 1.6; font-size: 14px;
+            border: 1px solid #e8c8b0; background: rgba(255, 255, 255, 0.95);
+        }
+        .message.user .message-content { background: #e8a87c; color: white; border-color: #e8a87c; }
+        .message-content h1, .message-content h2, .message-content h3 { margin: 12px 0 8px 0; }
+        .message-content h2 { border-bottom: 1px solid #f0d5c0; padding-bottom: 4px; color: #e8a87c; }
+        .message-content p { margin: 8px 0; }
+        .message-content ul, .message-content ol { margin: 8px 0 8px 20px; }
+        .message-content code { background: #fef5e8; padding: 2px 6px; }
+        .message-content pre { background: #fef5e8; padding: 12px; overflow-x: auto; }
+        .input-container { flex-shrink: 0; padding: 16px 24px 24px 24px; background: transparent; }
+        .input-box {
+            background: white; border: 1px solid #e8c8b0; padding: 8px 16px;
+            display: flex; align-items: flex-end; gap: 12px; transition: all 0.3s ease;
+        }
+        .input-box:focus-within { border-color: #e8a87c; box-shadow: 0 0 0 2px rgba(232, 168, 124, 0.1); }
+        .input-box textarea {
+            flex: 1; border: none; outline: none; resize: none; font-size: 14px;
+            line-height: 1.5; font-family: inherit; padding: 10px 0; max-height: 150px; min-height: 44px; background: transparent;
+        }
+        .input-actions { display: flex; gap: 8px; align-items: center; }
+        .send-btn {
+            background: #e8a87c; border: none; padding: 8px 24px; color: white;
+            font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.3s ease;
+        }
+        .send-btn:hover { background: #d4956a; transform: translateY(-1px); }
+        .stop-btn {
+            background: #fee8e0; border: 1px solid #e8a87c; padding: 8px 20px;
+            color: #e8a87c; font-size: 13px; font-weight: 500; cursor: pointer; display: none; transition: all 0.3s ease;
+        }
+        .stop-btn:hover { background: #fdd8c8; }
+        .message-controls { display: flex; gap: 12px; margin-top: 8px; margin-left: 4px; opacity: 0; transition: opacity 0.2s; }
+        .message:hover .message-controls { opacity: 1; }
+        .message-control-btn {
+            background: none; border: 1px solid #e8c8b0; font-size: 11px; color: #e8a87c;
+            cursor: pointer; padding: 4px 12px; transition: all 0.2s; display: flex; align-items: center; gap: 4px;
+        }
+        .message-control-btn:hover { background: #fff0e6; border-color: #e8a87c; }
+        .charts-container { display: flex; justify-content: center; gap: 24px; margin-top: 20px; flex-wrap: wrap; animation: fadeInUp 0.6s ease; }
+        .chart-card { width: 400px; height: 350px; background: white; border: 1px solid #e8c8b0; padding: 12px; transition: all 0.3s ease; }
+        .chart-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05); }
+        .chart-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: #e8a87c; display: flex; align-items: center; gap: 6px; }
+        .chart-box { width: 100%; height: calc(100% - 30px); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f0d5c0; }
+        ::-webkit-scrollbar-thumb { background: #e8a87c; }
+        .welcome-card { background: #fffbf7; padding: 24px; margin-bottom: 20px; border: 1px solid #e8c8b0; }
+        .welcome-card h3 { color: #e8a87c; margin-bottom: 12px; font-size: 1.1rem; }
+        .welcome-card p { margin: 8px 0; color: #8a6a4a; }
+        .welcome-card ol { margin-left: 20px; color: #8a6a4a; }
+        .welcome-card li { margin: 6px 0; }
+        .warm-message { padding: 16px; background: rgba(232, 168, 124, 0.08); border: 1px solid #e8c8b0; margin: 16px; text-align: center; animation: gentleBounce 3s ease-in-out infinite; }
+        .warm-message i { font-size: 20px; color: #e8a87c; margin-right: 8px; }
+        .warm-message span { font-size: 12px; color: #b08a6a; }
+        .analysis-progress { font-size: 12px; color: #e8a87c; padding: 8px; background: #fff0e6; margin: 8px 0; border: 1px solid #e8c8b0; }
+        .hidden { display: none; }
+        /* 逐句分析卡片 - 始终显示原句 */
+        .sentence-analysis-card {
+            background: #fffef8;
+            border: 1px solid #e8c8b0;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .sentence-original {
+            background: #fff0e6;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #e8a87c;
+            border-bottom: 1px solid #e8c8b0;
+        }
+        .sentence-analysis {
+            padding: 12px 14px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #4a3b2c;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="babylon-canvas"></canvas>
+    <div class="gallery-container" id="galleryContainer"></div>
+    <div class="app">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-heart" style="color: #ff6b8a;"></i> 吵架复盘AI助手</h2>
+                <p>先处理心情，再处理事情</p>
+            </div>
+            <button class="new-chat-btn" id="newChatBtn"><i class="fas fa-plus-circle"></i> 新对话</button>
+
+            <div class="warm-message"><i class="fas fa-hand-holding-heart float-icon"></i><span>赢了对错，输了感情，才是最大的损失。</span></div>
+            <div class="upload-card" id="uploadCard">
+                <div class="upload-icon"><i class="fas fa-cloud-upload-alt fa-2x float-icon" style="color: #e8a87c;"></i></div>
+                <p id="uploadText" style="margin-top: 12px;"><strong>上传音频</strong></p>
+                <p style="font-size: 11px; color: #b09a8a;"><i class="fas fa-music"></i> MP3, WAV, M4A</p>
+                <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+            </div>
+            <div id="uploadProgress" style="display: none; margin: 0 16px 16px 16px;">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: #fffbf7; border: 1px solid #e8c8b0;">
+                    <i class="fas fa-spinner spinner-icon" style="color: #e8a87c;"></i>
+                    <span id="progressText" style="font-size: 13px; color: #e8a87c;">上传中...</span>
+                    <div style="flex: 1; height: 3px; background: #f0d5c0;">
+                        <div id="progressFill" style="width: 0%; height: 100%; background: #e8a87c; transition: width 0.3s;"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="speakerResult" style="display: none;">
+                <div class="speaker-result">
+                    <div class="speaker-header"><span><i class="fas fa-user-tag"></i> 谁在说话</span><div class="speaker-stats" id="speakerStats"></div></div>
+                    <div id="dialogueList"></div>
+                </div>
+            </div>
+            <div class="transcript-area" id="transcriptArea" style="display: none;">
+                <textarea id="transcriptText" placeholder="识别结果..."></textarea>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" id="analyzeBtn"><i class="fas fa-chart-line"></i> 开始分析</button>
+                    <button class="btn" id="reuploadBtn"><i class="fas fa-redo-alt"></i> 重新上传</button>
+                </div>
+            </div>
+            <div class="warm-message" style="margin-top: auto;"><i class="fas fa-comment-dots"></i><span>用心倾听，用爱沟通。好好说话，就是把对方放在心上。</span></div>
+        </div>
+
+        <div class="main-area">
+            <div class="main-header">
+                <div class="mode-selector">
+                    <label class="mode-option"><input type="radio" name="thinkingMode" value="thinking"> <i class="fas fa-brain"></i> 思考模式</label>
+                    <label class="mode-option"><input type="radio" name="thinkingMode" value="normal" checked> <i class="fas fa-bolt"></i> 快速模式</label>
+                    <div class="reasoning-effort-container" id="reasoningEffortContainer">
+                        <i class="fas fa-sliders-h"></i>
+                        <select id="reasoningEffort"><option value="high">High - 标准</option><option value="max">Max - 深度</option></select>
+                    </div>
+                </div>
+                <div class="analyze-options">
+                    <label class="analyze-option"><input type="radio" name="analyzeMode" value="full" checked> <i class="fas fa-layer-group"></i> 逐句分析 + 综合</label>
+                    <label class="analyze-option"><input type="radio" name="analyzeMode" value="summary_only"> <i class="fas fa-chart-simple"></i> 仅综合</label>
+                </div>
+                <button class="clear-memory-btn" id="clearMemoryBtn"><i class="fas fa-trash-alt"></i> 清空</button>
+            </div>
+
+            <div class="messages-container" id="messagesContainer">
+                <div class="message ai">
+                    <div class="message-avatar"><i class="fas fa-heart" style="color: #ff6b8a;"></i> 吵架复盘AI助手</div>
+                    <div class="message-content">
+                        <div class="welcome-card">
+                            <h3><i class="fas fa-star"></i> 你好呀，我是你的沟通陪伴者</h3>
+                            <p><i class="fas fa-users"></i> <strong>识别不同说话人（说话人0、1、2...），“争吵时，先听再说；生气时，先等三秒。”“吵架不是目的，和好才是。” “语言的温度，决定关系的长度。”</strong></p>
+                            <p><i class="fas fa-list-ol"></i> <strong>怎么使用：</strong></p>
+                            <ol><li>点击左侧「上传音频」</li><li>等待识别（自动区分每个人）</li><li>点击「开始分析」</li></ol>
+                            <p style="margin-top: 12px;"><i class="fas fa-heart" style="color: #ff6b8a;"></i> 说出去的话，收不回；伤过的心，需要加倍温暖。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-container">
+                <div class="input-box">
+                    <textarea id="chatInput" placeholder="有什么想聊的吗？" rows="1" onkeydown="if(event.keyCode===13 && !event.shiftKey) { event.preventDefault(); sendMessage(); }"></textarea>
+                    <div class="input-actions">
+                        <button class="send-btn" id="sendBtn"><i class="fas fa-paper-plane"></i> 发送</button>
+                        <button class="stop-btn" id="stopBtn"><i class="fas fa-stop"></i> 停止</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 生成30张不同的随机图片 (Lorem Picsum, random 1-30)
+        const warmImageUrls = [];
+        for (let i = 1; i <= 30; i++) {
+            warmImageUrls.push(`https://picsum.photos/100/100?random=${i}`);
+        }
+
+        // 随机生成30个不同的位置
+        function getRandomPosition(index) {
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            const seed = index * 131071;
+            const randX = ((seed * 9301 + 49297) % 233280) / 233280;
+            const randY = ((seed * 48271 + 39297) % 233280) / 233280;
+            const left = 10 + randX * (screenWidth - 110);
+            const top = 10 + randY * (screenHeight - 110);
+            return { left, top };
+        }
+
+        // 初始化30张浮动图片
+        function initFloatingImages() {
+            const container = document.getElementById('galleryContainer');
+            container.innerHTML = '';
+            const shuffled = [...warmImageUrls];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            for (let i = 0; i < 30; i++) {
+                const img = document.createElement('img');
+                img.src = shuffled[i];
+                img.className = 'floating-image';
+                const pos = getRandomPosition(i);
+                img.style.left = pos.left + 'px';
+                img.style.top = pos.top + 'px';
+                img.style.animationDelay = `${(i * 0.5) % 10}s`;
+                img.style.animationDuration = `${10 + (i % 8)}s`;
+                img.style.animationDirection = i % 2 === 0 ? 'normal' : 'alternate';
+                container.appendChild(img);
+            }
+        }
+
+        initFloatingImages();
+        setInterval(initFloatingImages, 40000);
+        window.addEventListener('resize', () => initFloatingImages());
+
+        (function initBabylon() {
+            const canvas = document.getElementById('babylon-canvas');
+            const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+            const createScene = function() {
+                const scene = new BABYLON.Scene(engine);
+                scene.clearColor = new BABYLON.Color4(1, 0.96, 0.92, 1);
+                const camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 2, Math.PI / 3, 25, BABYLON.Vector3.Zero(), scene);
+                camera.attachControl(canvas, true);
+                camera.lowerRadiusLimit = 15; camera.upperRadiusLimit = 35;
+                const ambientLight = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+                ambientLight.intensity = 0.6; ambientLight.diffuse = new BABYLON.Color3(1, 0.85, 0.7);
+                const pointLight = new BABYLON.PointLight("pointLight", new BABYLON.Vector3(2, 5, 3), scene);
+                pointLight.intensity = 0.5; pointLight.diffuse = new BABYLON.Color3(1, 0.9, 0.8);
+                const particleSystem = new BABYLON.ParticleSystem("heartParticles", 2500, scene);
+                particleSystem.particleTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/flare.png", scene);
+                particleSystem.emitter = new BABYLON.Vector3(0, 0, 0);
+                particleSystem.minEmitBox = new BABYLON.Vector3(-8, -3, -5);
+                particleSystem.maxEmitBox = new BABYLON.Vector3(8, 5, 5);
+                particleSystem.color1 = new BABYLON.Color4(1, 0.2, 0.3, 1);
+                particleSystem.color2 = new BABYLON.Color4(1, 0.4, 0.5, 1);
+                particleSystem.colorDead = new BABYLON.Color4(0.8, 0.1, 0.2, 0);
+                particleSystem.minSize = 0.12; particleSystem.maxSize = 0.32;
+                particleSystem.minLifeTime = 1.5; particleSystem.maxLifeTime = 3;
+                particleSystem.emitRate = 350; particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ADD;
+                particleSystem.gravity = new BABYLON.Vector3(0, -0.5, 0);
+                particleSystem.direction1 = new BABYLON.Vector3(-2, 1, -1);
+                particleSystem.direction2 = new BABYLON.Vector3(2, 2, 1);
+                particleSystem.start();
+                const sphereMat = new BABYLON.StandardMaterial("sphereMat", scene);
+                sphereMat.diffuseColor = new BABYLON.Color3(1, 0.7, 0.6);
+                sphereMat.emissiveColor = new BABYLON.Color3(0.5, 0.2, 0.15);
+                sphereMat.alpha = 0.25;
+                for (let i = 0; i < 80; i++) {
+                    const sphere = BABYLON.Mesh.CreateSphere("sphere" + i, 16, 0.18, scene);
+                    sphere.material = sphereMat;
+                    sphere.position.x = (Math.random() - 0.5) * 22;
+                    sphere.position.y = (Math.random() - 0.5) * 12 + 2;
+                    sphere.position.z = (Math.random() - 0.5) * 18 - 6;
+                    const startX = sphere.position.x, startY = sphere.position.y;
+                    const ampX = Math.random() * 2.5, ampY = Math.random() * 1.8, speed = 0.4 + Math.random() * 0.6;
+                    let time = Math.random() * Math.PI * 2;
+                    scene.registerBeforeRender(() => {
+                        time += 0.008;
+                        sphere.position.x = startX + Math.sin(time * speed) * ampX;
+                        sphere.position.y = startY + Math.cos(time * speed * 0.7) * ampY;
+                    });
+                }
+                const heartPoints = [];
+                for (let t = 0; t <= Math.PI * 2; t += 0.04) {
+                    const x = 16 * Math.pow(Math.sin(t), 3);
+                    const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                    heartPoints.push(new BABYLON.Vector3(x * 0.5, y * 0.55 + 1.5, 0));
+                }
+                const heartLines = BABYLON.MeshBuilder.CreateLines("heart", { points: heartPoints }, scene);
+                heartLines.color = new BABYLON.Color3(1, 0.2, 0.3);
+                heartLines.position.z = -7;
+                let rotAngle = 0;
+                scene.registerBeforeRender(() => { rotAngle += 0.002; heartLines.rotation.y = Math.sin(rotAngle) * 0.25; heartLines.rotation.x = Math.sin(rotAngle * 0.5) * 0.08; });
+                return scene;
+            };
+            const scene = createScene();
+            engine.runRenderLoop(() => scene.render());
+            window.addEventListener('resize', () => engine.resize());
+        })();
+    </script>
+
+    <script>
+        const SPEAKER_COLORS = { 0: '#FF4444', 1: '#FF8844', 2: '#FFDD44', 3: '#44FF44', 4: '#44DDDD', 5: '#4444FF', 6: '#8844FF', 7: '#FF44FF', 8: '#DD8866', 9: '#AAAAAA' };
+
+        let currentFileId = null, currentTranscript = '', currentSentences = [], speakerCount = 0;
+        let thinkingMode = false, reasoningEffort = 'high';
+        let currentReader = null, isGenerating = false, currentStreamingMessage = null, accumulatedContent = '';
+
+        const uploadCard = document.getElementById('uploadCard'), audioInput = document.getElementById('audioInput');
+        const uploadProgress = document.getElementById('uploadProgress'), progressFill = document.getElementById('progressFill'), progressTextSpan = document.getElementById('progressText');
+        const speakerResultDiv = document.getElementById('speakerResult'), speakerStats = document.getElementById('speakerStats'), dialogueList = document.getElementById('dialogueList');
+        const transcriptArea = document.getElementById('transcriptArea'), transcriptText = document.getElementById('transcriptText');
+        const analyzeBtn = document.getElementById('analyzeBtn'), reuploadBtn = document.getElementById('reuploadBtn');
+        const messagesContainer = document.getElementById('messagesContainer'), chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn'), stopBtn = document.getElementById('stopBtn');
+        const newChatBtn = document.getElementById('newChatBtn'), clearMemoryBtn = document.getElementById('clearMemoryBtn');
+        const reasoningEffortContainer = document.getElementById('reasoningEffortContainer'), reasoningEffortSelect = document.getElementById('reasoningEffort');
+
+        document.querySelectorAll('input[name="thinkingMode"]').forEach(r => {
+            r.addEventListener('change', (e) => { thinkingMode = e.target.value === 'thinking'; reasoningEffortContainer.style.display = thinkingMode ? 'flex' : 'none'; });
+        });
+        reasoningEffortSelect.addEventListener('change', (e) => { reasoningEffort = e.target.value; });
+        reasoningEffortContainer.style.display = 'none';
+
+        stopBtn.addEventListener('click', async () => {
+            if (currentReader) { try { await currentReader.cancel(); } catch(e) {} currentReader = null; }
+            isGenerating = false;
+            stopBtn.style.display = 'none'; sendBtn.style.display = 'flex';
+            if (currentStreamingMessage) {
+                const contentDiv = currentStreamingMessage.querySelector('.message-content');
+                if (contentDiv && accumulatedContent) contentDiv.innerHTML = renderMarkdown(accumulatedContent + '\n\n---\n⚠️ **【已停止】**');
+                const controls = currentStreamingMessage.querySelector('.message-controls');
+                if (controls) controls.remove();
+            }
+            currentStreamingMessage = null;
+            chatInput.disabled = false; sendBtn.disabled = false;
+        });
+
+        newChatBtn.addEventListener('click', () => {
+            messagesContainer.innerHTML = '';
+            messagesContainer.innerHTML = `
+                <div class="message ai">
+                    <div class="message-avatar"><i class="fas fa-heart" style="color: #ff6b8a;"></i> 吵架复盘AI助手</div>
+                    <div class="message-content">
+                        <div class="welcome-card">
+                            <h3><i class="fas fa-star"></i> 你好呀，我是你的沟通陪伴者</h3>
+                            <p><i class="fas fa-users"></i> <strong>识别不同说话人（说话人0、1、2...），温柔梳理对话</strong></p>
+                            <p><i class="fas fa-list-ol"></i> <strong>怎么使用：</strong></p>
+                            <ol><li>点击左侧「上传音频」</li><li>等待识别（自动区分每个人）</li><li>点击「开始分析」</li></ol>
+                            <p style="margin-top: 12px;"><i class="fas fa-heart" style="color: #ff6b8a;"></i> 每一次争吵，都是为了更好的相遇。</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        clearMemoryBtn.addEventListener('click', () => {
+            const messages = messagesContainer.querySelectorAll('.message');
+            let firstMessage = null;
+            for (let msg of messages) {
+                if (msg.classList.contains('ai') && !firstMessage) { firstMessage = msg; continue; }
+                if (msg !== firstMessage) msg.remove();
+            }
+            addAIMessage('<i class="fas fa-broom"></i> **已清空记忆**，我们可以重新开始。');
+        });
+
+        uploadCard.addEventListener('click', () => audioInput.click());
+        audioInput.addEventListener('change', async (e) => { if (e.target.files[0]) await uploadAndRecognize(e.target.files[0]); });
+        reuploadBtn.addEventListener('click', () => {
+            transcriptArea.style.display = 'none'; speakerResultDiv.style.display = 'none';
+            uploadCard.style.display = 'block'; currentSentences = []; currentTranscript = '';
+        });
+
+        async function uploadAndRecognize(file) {
+            const formData = new FormData(); formData.append('audio', file);
+            uploadCard.style.display = 'none'; uploadProgress.style.display = 'block'; progressFill.style.width = '0%';
+            let fakeProgress = 0;
+            const interval = setInterval(() => {
+                if (fakeProgress < 90) { fakeProgress += 12; progressFill.style.width = fakeProgress + '%'; progressTextSpan.innerHTML = `<i class="fas fa-spinner spinner-icon"></i> 上传中 ${fakeProgress}%`; }
+            }, 200);
+            try {
+                const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+                const uploadData = await uploadRes.json(); if (!uploadRes.ok) throw new Error(uploadData.error);
+                currentFileId = uploadData.file_id;
+                clearInterval(interval); progressFill.style.width = '100%'; progressTextSpan.innerHTML = '<i class="fas fa-microphone-alt"></i> 识别中...';
+                const recogRes = await fetch(`/api/recognize/${currentFileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ use_base64: true }) });
+                const recogData = await recogRes.json(); if (!recogRes.ok) throw new Error(recogData.error);
+                uploadProgress.style.display = 'none';
+                currentTranscript = recogData.text; currentSentences = recogData.sentences_with_speaker || []; speakerCount = recogData.speaker_count || 0;
+                transcriptText.value = currentTranscript;
+                displaySpeakerResult();
+                transcriptArea.style.display = 'flex'; speakerResultDiv.style.display = 'block';
+                addAIMessage(`✅ **识别完成！**\n\n📊 共 ${currentSentences.length} 句话，${speakerCount} 位说话人。\n\n点击「开始分析」我会温柔地帮你梳理。`);
+            } catch(err) {
+                clearInterval(interval); uploadProgress.style.display = 'none'; uploadCard.style.display = 'block';
+                addAIMessage('❌ 识别失败：' + err.message);
+            }
+        }
+
+        function displaySpeakerResult() {
+            if (!currentSentences.length) return;
+            const speakerCountMap = {};
+            currentSentences.forEach(s => { speakerCountMap[s.speaker] = (speakerCountMap[s.speaker] || 0) + 1; });
+            speakerStats.innerHTML = '';
+            for (const [sp, cnt] of Object.entries(speakerCountMap)) {
+                speakerStats.innerHTML += `<div class="speaker-stat"><div class="speaker-color" style="background:${SPEAKER_COLORS[sp] || '#e8a87c'}"></div><span>说话人${sp}: ${cnt}句</span></div>`;
+            }
+            dialogueList.innerHTML = '';
+            currentSentences.forEach((s, idx) => {
+                const color = SPEAKER_COLORS[s.speaker] || '#e8a87c';
+                const div = document.createElement('div');
+                div.className = 'dialogue-item'; div.style.borderLeftColor = color;
+                div.innerHTML = `<div class="speaker-tag" style="background:${color}20; color:${color}">说话人${s.speaker}</div>
+                    <div class="dialogue-text" data-idx="${idx}">${escapeHtml(s.text)}</div>
+                    <i class="fas fa-edit edit-icon" data-idx="${idx}"></i>`;
+                const textDiv = div.querySelector('.dialogue-text'), editIcon = div.querySelector('.edit-icon');
+                textDiv.addEventListener('click', () => startEdit(idx, textDiv));
+                editIcon.addEventListener('click', () => startEdit(idx, textDiv));
+                dialogueList.appendChild(div);
+            });
+        }
+
+        function startEdit(idx, textDiv) {
+            const originalText = currentSentences[idx].text;
+            const input = document.createElement('input');
+            input.type = 'text'; input.className = 'dialogue-text-input'; input.value = originalText;
+            const saveEdit = () => {
+                const newText = input.value.trim();
+                if (newText && newText !== originalText) {
+                    currentSentences[idx].text = newText;
+                    textDiv.textContent = escapeHtml(newText);
+                    currentTranscript = currentSentences.map(s => s.text).join('。');
+                    transcriptText.value = currentTranscript;
+                }
+                textDiv.style.display = 'block'; input.remove(); textDiv.classList.remove('editing');
+            };
+            input.addEventListener('blur', saveEdit);
+            input.addEventListener('keypress', (e) => { if (e.key === 'Enter') saveEdit(); });
+            textDiv.style.display = 'none'; textDiv.parentNode.insertBefore(input, textDiv.nextSibling);
+            input.focus();
+        }
+
+        function renderCharts(emotionData, scores) {
+            let chartContainer = document.getElementById('chartsWrapper');
+            if (chartContainer) chartContainer.remove();
+            chartContainer = document.createElement('div'); chartContainer.id = 'chartsWrapper'; chartContainer.className = 'charts-container';
+            chartContainer.innerHTML = `<div class="chart-card"><div class="chart-title"><i class="fas fa-chart-line"></i> 情绪变化</div><div id="emotionChart" class="chart-box"></div></div>
+                <div class="chart-card"><div class="chart-title"><i class="fas fa-chart-pie"></i> 沟通能力</div><div id="radarChart" class="chart-box"></div></div>`;
+            const lastMessage = messagesContainer.lastElementChild;
+            if (lastMessage && lastMessage.classList.contains('ai')) lastMessage.querySelector('.message-content').appendChild(chartContainer);
+            else addAIMessage('').querySelector('.message-content').appendChild(chartContainer);
+            const ec = echarts.init(document.getElementById('emotionChart'));
+            ec.setOption({
+                tooltip: { trigger: 'axis', valueFormatter: (value) => value?.toFixed(2) },
+                xAxis: { show: false, data: emotionData.map((_,i) => '') },
+                yAxis: { type: 'value', max: 10, name: '情绪强度', nameStyle: { color: '#e8a87c' }, axisLabel: { color: '#b08a6a' } },
+                grid: { containLabel: true, left: 50, right: 20, top: 20, bottom: 20 },
+                series: [{ type: 'line', data: emotionData, smooth: true, lineStyle: { color: '#ff6b8a', width: 2 }, areaStyle: { opacity: 0.2, color: '#ff6b8a' }, symbol: 'circle', symbolSize: 6, itemStyle: { color: '#ff6b8a' }, }]
+            });
+            const rc = echarts.init(document.getElementById('radarChart'));
+            rc.setOption({
+                radar: { indicator: [{ name: '表达', max: 10 }, { name: '情绪', max: 10 }, { name: '逻辑', max: 10 }, { name: '同理心', max: 10 }, { name: '解决', max: 10 }], shape: 'circle', name: { textStyle: { color: '#b08a6a' } } },
+                series: [{ type: 'radar', data: [{ value: scores, name: '评分', areaStyle: { color: 'rgba(255,107,138,0.15)' }, lineStyle: { color: '#ff6b8a', width: 2 }, itemStyle: { color: '#ff6b8a' } }] }]
+            });
+            window.addEventListener('resize', () => { ec.resize(); rc.resize(); });
+        }
+
+        async function startStreaming(url, body, messageDiv, isOverall = false) {
+            return new Promise(async (resolve) => {
+                if (isGenerating && currentReader) {
+                    try { await currentReader.cancel(); } catch(e) {}
+                    currentReader = null;
+                }
+                isGenerating = true;
+                currentStreamingMessage = messageDiv;
+                accumulatedContent = '';
+                stopBtn.style.display = 'block'; sendBtn.style.display = 'none'; chatInput.disabled = true;
+                const controlsDiv = document.createElement('div'); controlsDiv.className = 'message-controls';
+                controlsDiv.innerHTML = `<button class="message-control-btn" id="pauseResumeBtn"><i class="fas fa-pause"></i> 暂停</button>
+                    <button class="message-control-btn" id="cancelBtn"><i class="fas fa-times"></i> 取消</button>`;
+                messageDiv.appendChild(controlsDiv);
+                let isPaused = false, fullContent = '';
+                const contentDiv = messageDiv.querySelector('.message-content');
+                const pauseResumeBtn = controlsDiv.querySelector('#pauseResumeBtn'), cancelBtn = controlsDiv.querySelector('#cancelBtn');
+                pauseResumeBtn.onclick = () => { isPaused = !isPaused; pauseResumeBtn.innerHTML = isPaused ? '<i class="fas fa-play"></i> 继续' : '<i class="fas fa-pause"></i> 暂停'; if (!isPaused && currentReader) resumeReading(); };
+                cancelBtn.onclick = async () => {
+                    if (currentReader) { try { await currentReader.cancel(); } catch(e) {} }
+                    isGenerating = false; currentReader = null; stopBtn.style.display = 'none'; sendBtn.style.display = 'flex';
+                    chatInput.disabled = false; controlsDiv.remove();
+                    if (contentDiv && accumulatedContent) contentDiv.innerHTML = renderMarkdown(accumulatedContent + '\n\n---\n⚠️ **【已取消】**');
+                    resolve();
+                };
+                async function resumeReading() {
+                    if (!currentReader) return;
+                    try {
+                        while (true) {
+                            if (isPaused) { await new Promise(r => setTimeout(r, 100)); continue; }
+                            if (!isGenerating) break;
+                            const { done, value } = await currentReader.read();
+                            if (done) break;
+                            const chunk = new TextDecoder().decode(value);
+                            const lines = chunk.split('\n');
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.slice(6));
+                                        if (data.type === 'content') {
+                                            fullContent += data.content; accumulatedContent = fullContent;
+                                            contentDiv.innerHTML = renderMarkdown(fullContent);
+                                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                        } else if (data.type === 'complete') {
+                                            isGenerating = false; currentReader = null; stopBtn.style.display = 'none'; sendBtn.style.display = 'flex';
+                                            chatInput.disabled = false; controlsDiv.remove();
+                                            if (isOverall && currentSentences.length) {
+                                                const emotionData = Array(currentSentences.length).fill(0).map((_,i) => Number((5 + Math.sin(i * 0.5) * 2 + Math.random() * 1).toFixed(2)));
+                                                const scores = [6,5,6,5,6];
+                                                renderCharts(emotionData, scores);
+                                            }
+                                            resolve();
+                                            return;
+                                        } else if (data.type === 'error') {
+                                            contentDiv.innerHTML = renderMarkdown(fullContent + '\n\n❌ ' + data.content);
+                                            isGenerating = false; currentReader = null; stopBtn.style.display = 'none'; sendBtn.style.display = 'flex';
+                                            chatInput.disabled = false; controlsDiv.remove();
+                                            resolve();
+                                            return;
+                                        }
+                                    } catch(e) {}
+                                }
+                            }
+                        }
+                    } catch(e) { if (isGenerating) console.error(e); }
+                    isGenerating = false; currentReader = null; stopBtn.style.display = 'none'; sendBtn.style.display = 'flex';
+                    chatInput.disabled = false; controlsDiv.remove();
+                    resolve();
+                }
+                try {
+                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                    currentReader = response.body.getReader();
+                    await resumeReading();
+                } catch(err) {
+                    contentDiv.innerHTML = renderMarkdown('❌ 请求失败：' + err.message);
+                    isGenerating = false; stopBtn.style.display = 'none'; sendBtn.style.display = 'flex'; chatInput.disabled = false; controlsDiv.remove();
+                    resolve();
+                }
+            });
+        }
+
+        // 构建完整对话上下文
+        function buildFullConversation() {
+            let conversation = "";
+            for (let i = 0; i < currentSentences.length; i++) {
+                const s = currentSentences[i];
+                const speakerLabel = s.speaker !== undefined ? `说话人${s.speaker}` : '未知';
+                conversation += `[第${i+1}句][${speakerLabel}] ${s.text}\n`;
+            }
+            return conversation;
+        }
+
+        async function performOverallAnalysis() {
+            const msgDiv = addAIMessage('<i class="fas fa-spinner spinner-icon"></i> 综合分析中，请稍等...');
+            await startStreaming('/api/analyze_overall', {
+                sentences_with_speaker: currentSentences, speaker_count: speakerCount,
+                thinking_mode: thinkingMode, reasoning_effort: reasoningEffort
+            }, msgDiv, true);
+        }
+
+        // 强制逐句分析 - 使用独立卡片样式，始终显示原句，结合完整上下文
+        async function performSentenceAnalysis() {
+            if (!currentSentences.length) {
+                addAIMessage('⚠️ 没有识别到任何句子，无法进行逐句分析');
+                return;
+            }
+
+            // 构建完整对话上下文
+            const fullConversation = buildFullConversation();
+
+            addAIMessage(`\n---\n## 📝 开始逐句分析，共 **${currentSentences.length}** 句话，将**结合整个对话语境**对每一句话进行独立分析\n`);
+
+            const progressMsg = addAIMessage(`<div class="analysis-progress"><i class="fas fa-spinner spinner-icon"></i> 逐句分析进度：0/${currentSentences.length}</div>`);
+            const progressDiv = progressMsg.querySelector('.message-content');
+
+            let analyzedCount = 0;
+
+            for (let i = 0; i < currentSentences.length; i++) {
+                const s = currentSentences[i];
+                const speakerLabel = s.speaker !== undefined ? `说话人${s.speaker}` : '未知';
+
+                if (progressDiv) {
+                    progressDiv.innerHTML = `<div class="analysis-progress"><i class="fas fa-spinner spinner-icon"></i> 逐句分析进度：${i+1}/${currentSentences.length} (正在分析第${i+1}句，结合上下文)</div>`;
+                }
+
+                // 创建独立的卡片式消息，原句始终显示在顶部
+                const cardDiv = document.createElement('div');
+                cardDiv.className = 'message ai';
+                cardDiv.innerHTML = `
+                    <div class="message-avatar"><i class="fas fa-heart" style="color: #ff6b8a;"></i> 吵架复盘AI助手</div>
+                    <div class="sentence-analysis-card">
+                        <div class="sentence-original">
+                            <i class="fas fa-quote-left" style="margin-right: 6px;"></i>
+                            <strong>第 ${i+1}/${currentSentences.length} 句 [${speakerLabel}]</strong><br>
+                            “${escapeHtml(s.text)}”
+                        </div>
+                        <div class="sentence-analysis" id="analysis-content-${i}">
+                            <i class="fas fa-spinner spinner-icon"></i> 结合上下文分析中...
+                        </div>
+                    </div>
+                `;
+                messagesContainer.appendChild(cardDiv);
+                cardDiv.scrollIntoView({ behavior: 'smooth' });
+
+                const contentDiv = cardDiv.querySelector(`#analysis-content-${i}`);
+
+                await new Promise(async (resolve) => {
+                    let fullContent = '';
+                    try {
+                        const response = await fetch('/api/analyze_sentence', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                sentence: s.text,
+                                sentence_index: i+1,
+                                total_sentences: currentSentences.length,
+                                speaker: s.speaker,
+                                thinking_mode: thinkingMode,
+                                reasoning_effort: reasoningEffort,
+                                full_conversation: fullConversation  // 传入完整对话上下文
+                            })
+                        });
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            const chunk = decoder.decode(value);
+                            const lines = chunk.split('\n');
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.slice(6));
+                                        if (data.type === 'content') {
+                                            fullContent += data.content;
+                                            contentDiv.innerHTML = renderMarkdown(fullContent);
+                                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                        } else if (data.type === 'complete') {
+                                            resolve();
+                                            return;
+                                        } else if (data.type === 'error') {
+                                            contentDiv.innerHTML = `❌ 分析出错: ${data.content}`;
+                                            resolve();
+                                            return;
+                                        }
+                                    } catch(e) {}
+                                }
+                            }
+                        }
+                        resolve();
+                    } catch(err) {
+                        contentDiv.innerHTML = `❌ 请求失败: ${err.message}`;
+                        resolve();
+                    }
+                });
+
+                analyzedCount++;
+            }
+
+            if (progressDiv) {
+                progressDiv.innerHTML = `<div class="analysis-progress"><i class="fas fa-check-circle"></i> ✅ 逐句分析完成！共分析 ${analyzedCount} 句话（已结合完整语境）</div>`;
+            }
+
+            addAIMessage(`\n## ✅ 逐句分析全部完成！`);
+        }
+
+        analyzeBtn.addEventListener('click', async () => {
+            if (!currentSentences.length) {
+                addAIMessage('⚠️ 请先上传音频文件');
+                return;
+            }
+            if (isGenerating) {
+                addAIMessage('⚠️ 正在分析中，请稍后');
+                return;
+            }
+
+            const mode = document.querySelector('input[name="analyzeMode"]:checked').value;
+
+            addAIMessage(`<div class="analysis-progress"><i class="fas fa-chart-line"></i> 开始分析，共 ${currentSentences.length} 句话</div>`);
+
+            await performOverallAnalysis();
+
+            isGenerating = false;
+            currentReader = null;
+
+            if (mode === 'full') {
+                await performSentenceAnalysis();
+            } else {
+                addAIMessage(`\n📊 **仅综合分析完成**（逐句分析已跳过）`);
+            }
+
+            addAIMessage(`\n✨ **分析完成！** 有什么想继续聊的吗？`);
+        });
+
+        async function sendMessage() {
+            const msg = chatInput.value.trim();
+            if (!msg || isGenerating) return;
+            addUserMessage(msg); chatInput.value = ''; chatInput.style.height = 'auto';
+            const msgDiv = addAIMessage('');
+            await startStreaming('/api/chat/stream', { message: msg, thinking_mode: thinkingMode, reasoning_effort: reasoningEffort, transcript: currentTranscript }, msgDiv, false);
+        }
+
+        function addUserMessage(text) {
+            const div = document.createElement('div'); div.className = 'message user';
+            div.innerHTML = `<div class="message-avatar"><i class="fas fa-user"></i> 你</div><div class="message-content">${escapeHtml(text)}</div>`;
+            messagesContainer.appendChild(div); div.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function addAIMessage(htmlContent) {
+            const div = document.createElement('div'); div.className = 'message ai';
+            div.innerHTML = `<div class="message-avatar"><i class="fas fa-heart" style="color: #ff6b8a;"></i> 吵架复盘AI助手</div><div class="message-content">${renderMarkdown(htmlContent)}</div>`;
+            messagesContainer.appendChild(div); div.scrollIntoView({ behavior: 'smooth' });
+            return div;
+        }
+
+        function renderMarkdown(text) {
+            if (typeof marked !== 'undefined') { try { return marked.parse(text); } catch(e) { return escapeHtml(text); } }
+            return escapeHtml(text);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])).replace(/\n/g, '<br>');
+        }
+
+        chatInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
+        sendBtn.addEventListener('click', () => sendMessage());
+    </script>
+</body>
+</html>
