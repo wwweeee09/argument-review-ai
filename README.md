@@ -85,7 +85,7 @@
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/yourusername/argument-review-ai.git
+[git clone [https://github.com/wwweeee09/argument-review-ai.git]
 cd argument-review-ai
 ```
 
